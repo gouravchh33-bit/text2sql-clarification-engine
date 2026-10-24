@@ -13,9 +13,19 @@ class LLMQueryClassification(BaseModel):
     reasoning: Optional[str] = Field(None, description="Explanation of why the query is ambiguous.")
     clarification_options: Optional[List[str]] = Field(None, description="3 alternative specific questions the user could ask.")
 
-# API Request Model
+# API Request Model (with Swagger UI example)
 class QueryRequest(BaseModel):
     prompt: str
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "prompt": "Which product category is performing the best right now?"
+                }
+            ]
+        }
+    }
 
 # API Response Model
 class QueryResponse(BaseModel):
@@ -26,12 +36,4 @@ class QueryResponse(BaseModel):
     clarification_options: Optional[List[str]] = None
     attempts_used: Optional[int] = None
     error: Optional[str] = None
-class QueryResponse(BaseModel):
-    status: IntentStatus
-    sql_query: Optional[str] = None
-    data: Optional[List[Dict[str, Any]]] = None
-    reasoning: Optional[str] = None
-    clarification_options: Optional[List[str]] = None
-    attempts_used: Optional[int] = None
-    error: Optional[str] = None
-    final_error: Optional[str] = None  # <-- ADD THIS LINE
+    final_error: Optional[str] = None
