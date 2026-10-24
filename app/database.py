@@ -1,39 +1,36 @@
 import duckdb
+import os
 
-# Initialize in-memory DuckDB database
-conn = duckdb.connect(database=":memory:")
+DB_PATH = os.getenv("DB_PATH", "text2sql.db")
 
-def init_db():
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS products (
-            product_id INTEGER,
-            product_name VARCHAR,
-            category VARCHAR,
-            unit_price DECIMAL(10,2),
-            quantity_sold INTEGER,
-            total_revenue DECIMAL(10,2)
-        );
-    """)
+def setup_dummy_data():
+    """Initializes the database with sample data if it doesn't exist."""
+    conn = duckdb.connect(DB_PATH)
+    # Fix 1: Added PRIMARY KEY to the category column
+    conn.execute("CREATE TABLE IF NOT EXISTS products (category VARCHAR PRIMARY KEY, total_revenue DOUBLE, quantity_sold INT, unit_price DOUBLE)")
+    
+    # Fix 2: Added (category) to the ON CONFLICT clause
+    conn.execute("INSERT INTO products VALUES ('Electronics', 25000.0, 100, 250.0), ('Accessories', 22000.0, 500, 44.0) ON CONFLICT (category) DO NOTHING")
+    conn.close()
 
-    # Clear table if re-initializing
-    conn.execute("DELETE FROM products;")
+def execute_safe_query(query: str) -> list:
+    """Executes a query with strict read-only constraints and limits."""
+    # 1. Block destructive keywords at the application level
+    forbidden_keywords = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE"]
+    if any(keyword in query.upper() for keyword in forbidden_keywords):
+        raise ValueError("Security Guardrail: Destructive SQL commands are blocked.")
 
-    # Seed data: 
-    # - 'Enterprise Laptop' has highest unit price & revenue ($15,000) but low units (10)
-    # - 'USB-C Cable' has lowest price ($10) but highest units sold (1,200) generating $12,000 revenue
-    conn.execute("""
-        INSERT INTO products VALUES
-        (101, 'Enterprise Laptop', 'Electronics', 1500.00, 10, 15000.00),
-        (102, 'USB-C Cable', 'Accessories', 10.00, 1200, 12000.00),
-        (103, 'Wireless Mouse', 'Accessories', 25.00, 400, 10000.00),
-        (104, '4K Monitor', 'Electronics', 400.00, 25, 10000.00);
-    """)
-
-def execute_query(sql_query: str):
-    """Executes SQL against DuckDB and returns rows as dictionaries."""
-    result = conn.execute(sql_query).fetchall()
-    columns = [desc[0] for desc in conn.description]
-    return [dict(zip(columns, row)) for row in result]
-
-# Run initialization
-init_db()
+    # 2. Connect in read-only mode to physically prevent database modification
+    conn = duckdb.connect(database=DB_PATH, read_only=True)
+    try:
+        # Remove any trailing spaces or semicolons from the LLM's output
+        clean_query = query.strip().rstrip(";")
+        
+        # Force a row limit to prevent memory overflow from bad JOINs
+        safe_query = f"SELECT * FROM ({clean_query}) LIMIT 100"
+        
+        # Execute and return as a list of dictionaries
+        df = conn.execute(safe_query).df()
+        return df.to_dict(orient="records")
+    finally:
+        conn.close()
