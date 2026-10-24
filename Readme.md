@@ -1,6 +1,31 @@
-# Intent-Aware Text-to-SQL Clarification Engine
+# Text-to-SQL Clarification Engine
 
-A production-ready FastAPI backend that transforms natural language queries into executable SQL over DuckDB. Unlike traditional "naive" AI wrappers that blindly execute LLM-generated code, this engine evaluates prompt ambiguity first, enforcing schema constraints and returning structured clarification options before touching the database.
+A production-grade, intent-aware Text-to-SQL engine built with FastAPI, DuckDB, and the Groq API. This application intelligently routes user queries, handles ambiguous requests by asking for clarification, and securely executes valid SQL against a local database.
+
+## 🚀 Key Features
+
+* **Intent-Aware Routing:** Uses an LLM to classify user prompts as either `CLEAR` or `AMBIGUOUS` before touching the database.
+* **Robust Security Guardrails:** 
+  * **Application-Level Keyword Blocking:** Prevents destructive commands (`DROP`, `DELETE`, `UPDATE`).
+  * **Read-Only Connections:** Enforces strict read-only execution on the DuckDB engine.
+  * **Row Limiting:** Automatically appends `LIMIT 100` to prevent memory overflow from malicious joins.
+* **Autonomous Self-Correction:** Implements an automated retry loop using Pydantic and Instructor to fix SQL parser errors on the fly.
+* **Modern API Architecture:** Built with FastAPI's `lifespan` context managers for safe startup/shutdown events.
+* **Fully Containerized:** Pre-configured Docker environment for instant local testing and seamless cloud deployment.
+
+## 🛠️ Tech Stack
+
+* **Backend:** FastAPI, Python 3.11
+* **Database:** DuckDB, Pandas, NumPy
+* **AI/LLM:** Groq API (Qwen), Instructor, Pydantic
+* **Infrastructure:** Docker, Docker Compose
+
+## 💻 Local Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone [https://github.com/your-username/text2sql-clarification-engine.git](https://github.com/your-username/text2sql-clarification-engine.git)
+   cd text2sql-clarification-engine
 
 ---
 ## 🏗️ Architecture Overview
