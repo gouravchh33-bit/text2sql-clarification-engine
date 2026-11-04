@@ -16,7 +16,7 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            cd text2sql_core 
+            cd text2sql-clarification-engine
             git pull origin main
             docker compose down
             docker compose up -d --build
