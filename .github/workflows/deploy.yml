@@ -35,7 +35,7 @@ jobs:
         run: ruff check app tests
 
       - name: Test
-        run: pytest
+        run: python -m pytest
 
       - name: Build container image
         run: docker build -t text2sql-ci:${{ github.sha }} .
