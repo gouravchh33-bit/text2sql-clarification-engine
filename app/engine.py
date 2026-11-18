@@ -1,3 +1,4 @@
+import logging
 import os
 from openai import OpenAI
 import instructor
@@ -7,6 +8,8 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+logger = logging.getLogger("text2sql.engine")
 
 # Initialize Groq client with Instructor
 client = instructor.from_openai(
@@ -61,14 +64,17 @@ def process_query(prompt: str) -> dict:
             try:
                 data = execute_safe_query(response.sql_query)
                 response.data = data
-            except Exception as db_err:
+            except Exception:
+                # Log the real cause server-side; don't ship it in the HTTP response.
+                logger.exception("Database execution failed")
                 response.error = "Database execution failed."
-                response.final_error = str(db_err)
+                response.final_error = "See server logs for details."
 
         return response.model_dump()
 
-    except Exception as e:
+    except Exception:
         # Fallback error handling if the LLM completely fails validation
+        logger.exception("Failed to obtain a valid structured response from the LLM")
         return {
             "status": "CLEAR",
             "sql_query": None,
@@ -76,6 +82,6 @@ def process_query(prompt: str) -> dict:
             "reasoning": None,
             "clarification_options": None,
             "attempts_used": 2,
-            "error": "Failed to generate valid SQL after 2 attempts.",
-            "final_error": str(e)
+            "error": "Failed to generate a valid SQL response. Please try again.",
+            "final_error": "See server logs for details."
         }

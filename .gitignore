@@ -9,5 +9,9 @@ env/
 __pycache__/
 *.pyc
 
-# Docker build junk
-.dockerignore
+# Local database files
+*.db
+*.duckdb
+
+# Test/cache artifacts
+.pytest_cache/

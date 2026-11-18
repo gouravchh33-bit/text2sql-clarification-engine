@@ -1,0 +1,28 @@
+# Secrets — must never be copied into an image layer
+.env
+.env.*
+!.env.example
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Local environments and caches
+venv/
+venv*/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local database files
+*.db
+*.duckdb
+
+# Docs / CI (not needed at runtime)
+.github/
+Readme.md
+README.md

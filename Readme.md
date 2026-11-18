@@ -1,208 +1,215 @@
 # Text-to-SQL Clarification Engine
 
-A production-grade, intent-aware Text-to-SQL engine built with FastAPI, DuckDB, and the Groq API. This application intelligently routes user queries, handles ambiguous requests by asking for clarification, and securely executes valid SQL against a local database.
+An intent-aware Text-to-SQL API built with FastAPI, DuckDB and the Groq API. It classifies a question *before* touching the database: clear questions are turned into validated DuckDB SQL, while ambiguous questions come back as clarification options instead of a guessed answer.
 
-## 🚀 Key Features
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/framework-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
+[![CI / Deploy](https://github.com/gouravchh33-bit/text2sql-clarification-engine/actions/workflows/deploy.yml/badge.svg)](https://github.com/gouravchh33-bit/text2sql-clarification-engine/actions/workflows/deploy.yml)
 
-* **Intent-Aware Routing:** Uses an LLM to classify user prompts as either `CLEAR` or `AMBIGUOUS` before touching the database.
-* **Robust Security Guardrails:** 
-  * **Application-Level Keyword Blocking:** Prevents destructive commands (`DROP`, `DELETE`, `UPDATE`).
-  * **Read-Only Connections:** Enforces strict read-only execution on the DuckDB engine.
-  * **Row Limiting:** Automatically appends `LIMIT 100` to prevent memory overflow from malicious joins.
-* **Autonomous Self-Correction:** Implements an automated retry loop using Pydantic and Instructor to fix SQL parser errors on the fly.
-* **Modern API Architecture:** Built with FastAPI's `lifespan` context managers for safe startup/shutdown events.
-* **Fully Containerized:** Pre-configured Docker environment for instant local testing and seamless cloud deployment.
-
-## 🛠️ Tech Stack
-
-* **Backend:** FastAPI, Python 3.11
-* **Database:** DuckDB, Pandas, NumPy
-* **AI/LLM:** Groq API (Qwen), Instructor, Pydantic
-* **Infrastructure:** Docker, Docker Compose
-
-## 💻 Local Setup
-
-1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/your-username/text2sql-clarification-engine.git](https://github.com/your-username/text2sql-clarification-engine.git)
-   cd text2sql-clarification-engine
+> **Deployed on AWS EC2.** Interactive docs: `http://<ec2-public-dns>:8000/docs` (replace the placeholder with your instance's public DNS or IP).
 
 ---
-## 🏗️ Architecture Overview
+
+## Features
+
+- **Intent routing** — prompts are classified as `CLEAR` or `AMBIGUOUS` before any SQL runs.
+- **Clarification instead of guessing** — subjective prompts ("Which product is best?") return 3 concrete alternative questions.
+- **Structured LLM output** — Instructor + Pydantic enforce a typed JSON contract, so no regex/markdown parsing.
+- **Layered SQL safety** — keyword blocklist, read-only DuckDB connection, and a forced `LIMIT 100`.
+- **Validated-output retries** — Instructor retries malformed LLM responses up to 2 times.
+- **Clean architecture** — separate `schemas`, `engine`, `database` and `main` modules with a FastAPI `lifespan` for startup.
+- **One-command deployment** — Docker Compose locally, GitHub Actions → SSH → EC2 in production.
+
+---
+
+## Architecture
 
 ```
-                        ┌───────────────────────────────────┐
-                        │        Client / Web App           │
-                        └─────────────────┬─────────────────┘
-                                          │
-                                   HTTP POST /api/v1/query
-                                          │
-                                          ▼
-                        ┌───────────────────────────────────┐
-                        │      FastAPI Router (main.py)     │
-                        └─────────────────┬─────────────────┘
-                                          │
-                                          ▼
-                        ┌───────────────────────────────────┐
-                        │     LLM Engine (engine.py)        │
-                        │    Instructor + Groq API          │
-                        └─────────────────┬─────────────────┘
-                                          │
-                             [Classify Query Intent]
-                                          │
-                   ┌──────────────────────┴──────────────────────┐
-                   │                                             │
-                   ▼                                             ▼
-            Status: CLEAR                                Status: AMBIGUOUS
-                   │                                             │
-                   ▼                                             ▼
-     ┌───────────────────────────┐                 ┌───────────────────────────┐
-     │  Execution Layer          │                 │ Bypass Database           │
-     │  (database.py - DuckDB)   │                 │ Return Options to Client  │
-     └─────────────┬─────────────┘                 └─────────────┬─────────────┘
-                   │                                             │
-                   └──────────────────────┬──────────────────────┘
-                                          │
-                                          ▼
-                        ┌───────────────────────────────────┐
-                        │      Structured JSON Response     │
-                        └───────────────────────────────────┘
+                         ┌───────────────────────────────────┐
+                         │        Client / Web App           │
+                         └─────────────────┬─────────────────┘
+                                           │ POST /api/v1/query
+                                           ▼
+                         ┌───────────────────────────────────┐
+                         │      FastAPI router (main.py)     │
+                         │   validation, logging, errors     │
+                         └─────────────────┬─────────────────┘
+                                           ▼
+                         ┌───────────────────────────────────┐
+                         │     LLM engine (engine.py)        │
+                         │    Instructor + Groq API          │
+                         └─────────────────┬─────────────────┘
+                                           │ classify intent
+                    ┌──────────────────────┴──────────────────────┐
+                    ▼                                             ▼
+             Status: CLEAR                                Status: AMBIGUOUS
+                    │                                             │
+                    ▼                                             ▼
+      ┌───────────────────────────┐                 ┌───────────────────────────┐
+      │  Execution layer          │                 │ Bypass database           │
+      │  (database.py - DuckDB)   │                 │ Return clarification       │
+      │  guardrails + LIMIT 100   │                 │ options to client          │
+      └─────────────┬─────────────┘                 └─────────────┬─────────────┘
+                    └──────────────────────┬──────────────────────┘
+                                           ▼
+                         ┌───────────────────────────────────┐
+                         │      Structured JSON response     │
+                         └───────────────────────────────────┘
 ```
----
-
-## ✨ Key Engineering Features
-
-* **Two-Path Intent Disambiguation:** Differentiates between clear metric queries and subjective prompts (e.g., *"Which is the best product?"*). Ambiguous prompts bypass execution and return user options.
-* **Schema Enforcement via Instructor & Pydantic:** Guarantees strict JSON output structures from the LLM, eliminating regex parsing errors or invalid markdown wrapping.
-* **In-Memory Analytical Engine:** Powered by DuckDB for sub-millisecond analytical query execution.
-* **Production-Ready Architecture:** Clean separation of concerns across modules (`schemas`, `engine`, `database`, `main`).
-* **Containerized Deployment:** Fully dockerized with `Dockerfile` and `docker-compose.yml` for single-command orchestration.
 
 ---
 
-## 🛠️ Tech Stack
+## Tech stack
 
-* **Framework:** FastAPI (Python 3.11)
-* **Database:** DuckDB
-* **LLM Orchestration:** Instructor, Groq Cloud API (`qwen/qwen3.8-27b`)
-* **Validation:** Pydantic v2
-* **Containerization:** Docker & Docker Compose
-
----
-
-## 🚀 Quickstart Guide
-
-### Prerequisites
-* [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed **OR** Python 3.11+
-* A free [Groq API Key](https://console.groq.com)
+| Layer | Choice |
+| --- | --- |
+| Framework | FastAPI, Pydantic v2 |
+| Database | DuckDB (embedded, in-process analytics) |
+| LLM | Groq API (`qwen/qwen3.8-27b`) |
+| Structured output | Instructor |
+| Containers | Docker, Docker Compose |
+| CI/CD | GitHub Actions → EC2 over SSH |
 
 ---
 
-### Option 1: Run with Docker Compose (Recommended)
+## Quickstart
 
-1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/gouravchh33-bit/text2sql-clarification-engine.git](https://github.com/gouravchh33-git/text2sql-clarification-engine.git)
-   cd text2sql-clarification-engine
-Configure environment variables:
+### Option 1 — Docker Compose (recommended)
 
-Bash
+```bash
+git clone https://github.com/gouravchh33-bit/text2sql-clarification-engine.git
+cd text2sql-clarification-engine
 cp .env.example .env
-Open .env and add your Groq API key:
-
-Code snippet
-GROQ_API_KEY=gsk_your_actual_api_key_here
-Start the application:
-
-Bash
+# edit .env and add your Groq API key
 docker compose up --build
-The API will be live at http://127.0.0.1:8000/docs.
+```
 
-Option 2: Run Locally with Python
-Create and activate a virtual environment:
+API docs are then at <http://127.0.0.1:8000/docs>.
 
-Bash
+### Option 2 — local Python
+
+Requires Python 3.11+.
+
+```bash
 python -m venv venv
-# On Windows:
-venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
-Install dependencies:
-
-Bash
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-Set up .env:
-
-Bash
-cp .env.example .env
-Add your GROQ_API_KEY to .env.
-
-Launch the server:
-
-Bash
+cp .env.example .env            # then add GROQ_API_KEY
+export GROQ_API_KEY=...         # Windows PowerShell: $env:GROQ_API_KEY="..."
 uvicorn app.main:app --reload
-🧪 API Usage Examples
-1. Clear Intent Query
-Endpoint: POST /api/v1/query
+```
 
-Payload:
+---
 
-JSON
-{
-  "prompt": "Show me total revenue by category"
-}
-Response (200 OK):
+## API usage
 
-JSON
+### Clear intent
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/query \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt": "Show me total revenue by category"}'
+```
+
+```json
 {
   "status": "CLEAR",
   "sql_query": "SELECT category, SUM(total_revenue) AS total_revenue FROM products GROUP BY category",
   "data": [
-    {
-      "category": "Electronics",
-      "total_revenue": 25000.0
-    },
-    {
-      "category": "Accessories",
-      "total_revenue": 22000.0
-    }
+    { "category": "Electronics", "total_revenue": 25000.0 },
+    { "category": "Accessories", "total_revenue": 22000.0 }
   ]
 }
-2. Ambiguous Intent Query (Guardrail Triggered)
-Endpoint: POST /api/v1/query
+```
 
-Payload:
+### Ambiguous intent — guardrail triggers a clarification
 
-JSON
-{
-  "prompt": "Which is the best product?"
-}
-Response (200 OK):
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/v1/query \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt": "Which is the best product?"}'
+```
 
-JSON
+```json
 {
   "status": "AMBIGUOUS",
-  "reasoning": "The term 'best' is ambiguous because it can refer to highest total revenue or highest sales volume (quantity sold).",
+  "reasoning": "'Best' could mean highest revenue, highest quantity sold, or highest unit price.",
   "clarification_options": [
     "Product with the highest total revenue",
     "Product with the highest quantity sold",
     "Product with the highest unit price"
   ]
 }
+```
 
-📂 Project Structure
+Unhandled failures return `500` with a reference ID; the underlying exception is logged server-side, never exposed to the client.
 
+---
+
+## Configuration
+
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `GROQ_API_KEY` | Yes | — | Groq API credential |
+| `LLM_MODEL` | No | `qwen/qwen3.8-27b` | Groq-hosted model ID |
+| `DB_PATH` | No | `text2sql.db` | DuckDB file (set via the container environment / Compose `env_file`) |
+
+See `.env.example` for the template. `.env` is gitignored and excluded from Docker builds via `.dockerignore`.
+
+---
+
+## Project structure
+
+```
 text2sql-clarification-engine/
 ├── app/
 │   ├── __init__.py
-│   ├── database.py       # DuckDB connection & schema execution
-│   ├── engine.py         # Instructor/Groq LLM intent classification
-│   ├── main.py           # FastAPI routes & HTTP middleware
-│   └── schemas.py        # Pydantic data contracts
-├── .dockerignore
+│   ├── main.py           # routes, logging, error mapping, lifespan
+│   ├── engine.py         # intent classification via Instructor + Groq
+│   ├── database.py       # DuckDB seed data + guarded execution
+│   └── schemas.py        # Pydantic request/response contracts
+├── .github/workflows/deploy.yml  # GitHub Actions → EC2
+├── .dockerignore         # keeps secrets and caches out of image layers
+├── .gitattributes        # LF normalization across OSes
 ├── .env.example
-├── .gitignore
 ├── docker-compose.yml
 ├── Dockerfile
-├── README.md
+├── Readme.md
 └── requirements.txt
+```
+
+---
+
+## Deployment / CI-CD
+
+Pushing to `main` triggers `.github/workflows/deploy.yml`, which SSHes into the EC2 instance, pulls the latest commit and rebuilds the containers:
+
+```
+git push origin main
+      ▼
+GitHub Actions (ubuntu-latest)
+      ▼
+appleboy/ssh-action → EC2
+      ▼
+git pull origin main && docker compose up -d --build
+```
+
+Required repository secrets: `EC2_HOST`, `EC2_USERNAME`, `EC2_SSH_KEY`.
+
+---
+
+## Security design
+
+1. **Application filter** — destructive keywords (`DROP`, `DELETE`, `UPDATE`, `INSERT`, `ALTER`, `CREATE`) are rejected before execution.
+2. **Read-only connection** — DuckDB opens the database with `read_only=True`; this is the actual enforcement boundary.
+3. **Row cap** — every query is wrapped as `SELECT * FROM (<query>) LIMIT 100`.
+4. **No error disclosure** — exceptions are logged with a request reference ID; clients receive a generic message.
+
+---
+
+## Limitations / next steps
+
+- The demo schema is a single 2-row `products` table and `SCHEMA_CONTEXT` is hardcoded in `engine.py`; a richer multi-table schema with introspected metadata would show real joins.
+- Instructor retries validate the *shape* of the LLM response, not SQL semantics — a true execute → error → regenerate loop is not implemented yet.
+- The public endpoint has no authentication or rate limiting; add both before relying on it outside a demo.
+- The keyword filter is a heuristic first pass; the read-only connection is the real guarantee.
