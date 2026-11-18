@@ -1,13 +1,51 @@
-name: Deploy Text2SQL to AWS
+name: Test and Deploy Text2SQL
 
 on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: text2sql-main
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  test:
+    name: Lint, test and build
     runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check app tests
+
+      - name: Test
+        run: pytest
+
+      - name: Build container image
+        run: docker build -t text2sql-ci:${{ github.sha }} .
+
+  deploy:
+    name: Deploy to EC2
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Deploy via SSH to EC2
         uses: appleboy/ssh-action@v1.0.3
@@ -15,8 +53,28 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          script_stop: true
           script: |
+            set -e
             cd text2sql-clarification-engine
-            git pull origin main
-            sudo docker compose down
-            sudo docker compose up -d --build
+
+            PREV_COMMIT=$(git rev-parse HEAD)
+            echo "Current revision: $PREV_COMMIT"
+
+            git pull --ff-only origin main
+            sudo docker compose up -d --build --remove-orphans
+
+            echo "Waiting for /health ..."
+            for i in $(seq 1 30); do
+              if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+                echo "Health check passed."
+                exit 0
+              fi
+              sleep 2
+            done
+
+            echo "Health check failed - rolling back to $PREV_COMMIT"
+            git checkout -q "$PREV_COMMIT"
+            sudo docker compose up -d --build --remove-orphans
+            git checkout -q main
+            exit 1
