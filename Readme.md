@@ -8,7 +8,7 @@ An intent-aware Text-to-SQL API built with FastAPI, DuckDB and the Groq API. It 
 [![CI / Deploy](https://github.com/gouravchh33-bit/text2sql-clarification-engine/actions/workflows/deploy.yml/badge.svg)](https://github.com/gouravchh33-bit/text2sql-clarification-engine/actions/workflows/deploy.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-> **Deployed on AWS EC2.** Interactive docs: `http://<ec2-public-dns>:8000/docs` (replace the placeholder with your instance's public DNS or IP).
+> **Deployed on AWS EC2.** Interactive docs: `http://15.135.106.212:8000/docs` (replace the placeholder with your instance's public DNS or IP).
 
 ---
 
