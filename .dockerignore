@@ -9,6 +9,7 @@
 .gitattributes
 
 # Local environments and caches
+.venv/
 venv/
 venv*/
 env/
@@ -22,7 +23,8 @@ __pycache__/
 *.db
 *.duckdb
 
-# Docs / CI (not needed at runtime)
+# Docs / CI / editor config (not needed at runtime)
 .github/
+.vscode/
 Readme.md
 README.md
